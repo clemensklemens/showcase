@@ -1,0 +1,1 @@
+Final project of my job qualification in data anlytics using Python, Pandas, Matplotlib, Seaborn. The description and the comments are in German though. I will not provide the data, because I don't know what the original source was.
