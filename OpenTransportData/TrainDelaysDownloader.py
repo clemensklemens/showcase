@@ -115,9 +115,10 @@ for google_file in google_files_list:
         
             #only trains, no drive throughs
             df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False)]
-            df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID'], inplace=True) 
-                
-            #calculate delays
+            df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID'], inplace=True) 
+            
+            #calculate delays first drop not available delay values
+            df_tmp.dropna(subset=['AN_PROGNOSE', 'AB_PROGNOSE'], inplace=True)
             df_tmp = calculate_delays(df_tmp, True)
             df_tmp = calculate_delays(df_tmp, False)
 
