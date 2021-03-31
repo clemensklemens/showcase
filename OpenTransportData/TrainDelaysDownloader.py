@@ -88,45 +88,47 @@ df_trains = pd.DataFrame()
 
 #loop through id list and try to download files
 for google_file in google_files_list:
-    #while loop for multiple download tries
+    #loop for multiple download tries
+    
     for i in range(5):
-        #load data from google drive to tmp.zip
-        download_link = f"https://drive.google.com/uc?id={google_file[0]}&export=download"
-        print(f"Download try {i+1} of 5 for Link: {download_link}")
-        google_loader = googleDriveFileDownloader()
-        #Download and verify download
         try:
+            #load data from google drive to tmp.zip
+            download_link = f"https://drive.google.com/uc?id={google_file[0]}&export=download"
+            print(f"Download try {i+1} of 5 for Link: {download_link}")
+            google_loader = googleDriveFileDownloader()
+            
+            #Download and verify download
             google_loader.downloadFile(download_link, zip_filename)
             is_zipfile(zip_filename)
-            break
-        except:
-            continue
-
-    #read all csv files inside zip and extract the info wanted for train delays
-    with ZipFile(zip_filename, 'r') as zipObj:
-        csv_files = zipObj.namelist()
-        for csv_file in csv_files:
-            print(csv_file)
-            #read csv into bytes format
-            tmp_data = zipObj.read(csv_file)
-    
-            #convert to dataframe
-            df_tmp = pd.read_csv(BytesIO(tmp_data), sep=';', parse_dates=False)
-        
-            #only trains, no drive throughs
-            df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False)]
-            df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID'], inplace=True) 
             
-            #calculate delays first drop not available delay values
-            df_tmp.dropna(subset=['AN_PROGNOSE', 'AB_PROGNOSE'], inplace=True)
-            df_tmp = calculate_delays(df_tmp, True)
-            df_tmp = calculate_delays(df_tmp, False)
+            #read all csv files inside zip and extract the info wanted for train delays
+            with ZipFile(zip_filename, 'r') as zipObj:
+                csv_files = zipObj.namelist()
+                for csv_file in csv_files:
+                    print(csv_file)
+                    #read csv into bytes format
+                    tmp_data = zipObj.read(csv_file)
+    
+                    #convert to dataframe
+                    df_tmp = pd.read_csv(BytesIO(tmp_data), sep=';', parse_dates=False)
+        
+                    #only trains, no drive throughs
+                    df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False)]
+                    df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID'], inplace=True) 
+            
+                    #calculate delays first drop not available delay values
+                    df_tmp.dropna(subset=['AN_PROGNOSE', 'AB_PROGNOSE'], inplace=True)
 
-            #add tmp data to dataframe
-            df_trains = df_trains.append(df_tmp)
-                
+                    #add tmp data to dataframe
+                    df_trains = df_trains.append(df_tmp)
+        except:
+            i += 1
+
 #delete tmp file
-os.remove(zip_filename)
+try:
+    os.remove(zip_filename)
+except:
+    pass
 
 #save DataFrame to csv for further usage
 print(f'Saving data to {trains_zip}')
