@@ -88,9 +88,10 @@ df_trains = pd.DataFrame()
 
 #loop through id list and try to download files
 for google_file in google_files_list:
-    #loop for multiple download tries
     
-    for i in range(5):
+    #loop for multiple download tries
+    i = 0
+    while i < 5:
         try:
             #load data from google drive to tmp.zip
             download_link = f"https://drive.google.com/uc?id={google_file[0]}&export=download"
@@ -121,6 +122,7 @@ for google_file in google_files_list:
 
                     #add tmp data to dataframe
                     df_trains = df_trains.append(df_tmp)
+            break
         except:
             i += 1
 
