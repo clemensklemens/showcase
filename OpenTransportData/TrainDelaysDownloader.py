@@ -18,7 +18,6 @@ import sys
 #Lib for downloading files from google drives
 from googleDriveFileDownloader import googleDriveFileDownloader
 import pandas as pd
-import numpy as np
 import zipfile
 from io import BytesIO
 
@@ -37,7 +36,7 @@ trains_csv = 'trains.csv' #csv-file for train data export
 
 #helper functions calculation of delays
 def calculate_delays(df, arrival_delays):
-    '''function to calcullate trains delays from departure and arrival times'''
+    '''function to calculate trains delays from departure and arrival times'''
 
     #calc arrival delays or departure delays?
     if arrival_delays == True:
@@ -86,6 +85,12 @@ with open(google_ids_file) as file:
 #create empty dataframe
 df_trains = pd.DataFrame()
 
+#delete old result zip
+try:
+    os.remove(trains_zip)
+except:
+    pass
+
 #loop through id list and try to download files
 for google_file in google_files_list:
     
@@ -116,10 +121,12 @@ for google_file in google_files_list:
         
                     #only trains, no drive throughs
                     df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False)]
-                    df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID'], inplace=True) 
+                    df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID', 'BETREIBER_ABK', 'LINIEN_ID'], inplace=True) 
             
                     #calculate delays first drop not available delay values
                     df_tmp.dropna(subset=['AN_PROGNOSE', 'AB_PROGNOSE'], inplace=True)
+                    df_tmp = calculate_delays(df_tmp, True)
+                    df_tmp = calculate_delays(df_tmp, False)
 
                     #add tmp data to dataframe
                     df_trains = df_trains.append(df_tmp)
@@ -128,8 +135,15 @@ for google_file in google_files_list:
                 with zipfile.ZipFile(trains_zip, 'a') as zipExport:
                      zipExport.write(csv_export_name)
                 #remove csv file
-                os.remove(csv_export_name)
-                df_trains = pd.DataFrame()
+                try:
+                    os.remove(csv_export_name)
+                except:
+                    pass
+                
+                #clear variables
+                tmp_data = None
+                df_tmp = None
+                df_trains = None
             break
         except:
             i += 1
@@ -139,7 +153,3 @@ try:
     os.remove(zip_filename)
 except:
     pass
-
-#save DataFrame to csv for further usage
-#print(f'Saving data to {trains_zip}')
-#df_trains.to_csv(trains_zip, index=False, compression={'method' : 'zip', 'archive_name' : trains_csv})
