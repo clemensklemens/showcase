@@ -82,9 +82,6 @@ with open(google_ids_file) as file:
     reader = csv.reader(file)
     google_files_list = list(reader)
 
-#create empty dataframe
-df_trains = pd.DataFrame()
-
 #delete old result zip
 try:
     os.remove(trains_zip)
@@ -106,6 +103,10 @@ for google_file in google_files_list:
             #Download and verify download
             google_loader.downloadFile(download_link, zip_filename)
             zipfile.is_zipfile(zip_filename)
+            
+            #create empty dataframe
+            df_trains = pd.DataFrame()
+            
             #read all csv files inside zip and extract the info wanted for train delays
             with zipfile.ZipFile(zip_filename, 'r') as zipObj:
                 csv_files = zipObj.namelist()
