@@ -19,7 +19,7 @@ import sys
 from googleDriveFileDownloader import googleDriveFileDownloader
 import pandas as pd
 import numpy as np
-from zipfile import ZipFile, is_zipfile
+import zipfile
 from io import BytesIO
 
 
@@ -100,11 +100,12 @@ for google_file in google_files_list:
             
             #Download and verify download
             google_loader.downloadFile(download_link, zip_filename)
-            is_zipfile(zip_filename)
-            
+            zipfile.is_zipfile(zip_filename)
             #read all csv files inside zip and extract the info wanted for train delays
-            with ZipFile(zip_filename, 'r') as zipObj:
+            with zipfile.ZipFile(zip_filename, 'r') as zipObj:
                 csv_files = zipObj.namelist()
+                #extract month name from csv_files list
+                csv_export_name = csv_files[0][:csv_files[0].find('/')]+'.csv'
                 for csv_file in csv_files:
                     print(csv_file)
                     #read csv into bytes format
@@ -122,6 +123,13 @@ for google_file in google_files_list:
 
                     #add tmp data to dataframe
                     df_trains = df_trains.append(df_tmp)
+                #export to csv and add to zip file
+                df_trains.to_csv(csv_export_name, index=False)
+                with zipfile.ZipFile(trains_zip, 'a') as zipExport:
+                     zipExport.write(csv_export_name)
+                #remove csv file
+                os.remove(csv_export_name)
+                df_trains = pd.DataFrame()
             break
         except:
             i += 1
@@ -133,5 +141,5 @@ except:
     pass
 
 #save DataFrame to csv for further usage
-print(f'Saving data to {trains_zip}')
-df_trains.to_csv(trains_zip, index=False, compression={'method' : 'zip', 'archive_name' : trains_csv})
+#print(f'Saving data to {trains_zip}')
+#df_trains.to_csv(trains_zip, index=False, compression={'method' : 'zip', 'archive_name' : trains_csv})
