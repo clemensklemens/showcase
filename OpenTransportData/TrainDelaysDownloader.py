@@ -3,11 +3,12 @@
 """
 Created on Sun Mar 28 15:36:29 2021
 
-@author: Clemens 
+@author: Clemens
 
 Script to download and preprocess data for cancelled trains and train delays
 from the open transport data Switzerland https://opentransportdata.swiss/de/
-The script loads older data which is made available in an open google drive (https://drive.google.com/drive/folders/1SVa68nJJRL3qgRSPKcXY7KuPN9MuHVhJ)
+The script loads older data which is made available in an open google drive
+(https://drive.google.com/drive/folders/1SVa68nJJRL3qgRSPKcXY7KuPN9MuHVhJ)
 The script needs the path / name to a csv file with the google drive ids of the wanted zip-files
 """
 
@@ -134,7 +135,7 @@ for google_file in google_files_list:
                 #export to csv and add to zip file
                 df_trains.to_csv(csv_export_name, index=False)
                 with zipfile.ZipFile(trains_zip, 'a') as zipExport:
-                     zipExport.write(csv_export_name)
+                    zipExport.write(csv_export_name)
                 #remove csv file
                 try:
                     os.remove(csv_export_name)
