@@ -3,11 +3,12 @@
 """
 Created on Sun Mar 28 15:36:29 2021
 
-@author: Clemens 
+@author: Clemens
 
 Script to download and preprocess data for cancelled trains and train delays
 from the open transport data Switzerland https://opentransportdata.swiss/de/
-The script loads older data which is made availble in an open google drive (https://drive.google.com/drive/folders/1SVa68nJJRL3qgRSPKcXY7KuPN9MuHVhJ)
+The script loads older data which is made available in an open google drive
+(https://drive.google.com/drive/folders/1SVa68nJJRL3qgRSPKcXY7KuPN9MuHVhJ)
 The script needs the path / name to a csv file with the google drive ids of the wanted zip-files
 """
 
@@ -18,64 +19,61 @@ import sys
 #Lib for downloading files from google drives
 from googleDriveFileDownloader import googleDriveFileDownloader
 import pandas as pd
-import numpy as np
-from zipfile import ZipFile
+import zipfile
 from io import BytesIO
 
 
-google_ids_file = sys.argv[1] #csv file with google drive ids
+#check if debug mode then use testlist.csv
+gettrace = getattr(sys, 'gettrace', None)
+if gettrace():
+    google_ids_file = './testlist.csv'
+else:
+    google_ids_file = sys.argv[1] #csv file with google drive ids
+
+
 zip_filename = './tmp.zip' #tmp file for downloaded data
-delays_zip = './delays.zip' #zip-file for train delay exoprt
-delays_csv = 'delays.csv' #csv-file for train delay exoprt
-cancelled_zip = './cancelled.zip' #zip-file for cancelled trains exoprt
-cancelled_csv = 'cancelled.csv' #csv-file for cancelled trains exoprt
+trains_zip = './trains.zip' #zip-file for train data export
+trains_csv = 'trains.csv' #csv-file for train data export
 
+#helper functions calculation of delays
+def calculate_delays(df, arrival_delays):
+    '''function to calculate trains delays from departure and arrival times'''
 
-#helper functions for extracting the needed information
-def extract_delays(df):
-    '''function to extract neccesary information for train delays'''
-    #Only entries where the real arrival times are available are uses
-    #ignore cancelled trips and departure times
-    df = df.loc[(df['FAELLT_AUS_TF'] == False) & (df['AN_PROGNOSE_STATUS'] == "REAL")
-                , ['BETRIEBSTAG', 'BETREIBER_ABK', 'BETREIBER_NAME', 'LINIEN_ID', 'LINIEN_TEXT', 'HALTESTELLEN_NAME', 'ANKUNFTSZEIT', 'AN_PROGNOSE']]
+    #calc arrival delays or departure delays?
+    if arrival_delays == True:
+        time_prognosis = 'AN_PROGNOSE'
+        time_real = 'ANKUNFTSZEIT'
+        delay_calculated = 'AN_VERSPAETUNG'
+    else:
+        time_prognosis = 'AB_PROGNOSE'
+        time_real = 'ABFAHRTSZEIT'
+        delay_calculated = 'AB_VERSPAETUNG'
     
-    #Change Timestrings into datetime objects
-    df['ANKUNFTSZEIT'] = pd.to_datetime(df['ANKUNFTSZEIT'], format='%d.%m.%Y %H:%M')
-    df['AN_PROGNOSE'] = pd.to_datetime(df['AN_PROGNOSE'], format='%d.%m.%Y %H:%M:%S')
+    df[time_real] = pd.to_datetime(df[time_real], format='%d.%m.%Y %H:%M')
+    df[time_prognosis] = pd.to_datetime(df[time_prognosis], format='%d.%m.%Y %H:%M:%S')
 
     #floor to minutes, we measure only delays in minutes
-    df['AN_PROGNOSE'] = df['AN_PROGNOSE'].dt.floor('Min')
+    df[time_prognosis] = df[time_prognosis].dt.floor('Min')
     
     #Calculate delay convert to seconds and then to minutes (there is no way to do this directly)
-    df['VERSPAETUNG'] = (df['AN_PROGNOSE'] - df['ANKUNFTSZEIT'])
+    df[delay_calculated ] = ( df[time_prognosis] - df[time_real])
 
     #get index and values of train arrivals in advance (neg time difference)
-    neg_index = df.loc[df['VERSPAETUNG'] < pd.Timedelta(0)].index
-    neg_values = df['VERSPAETUNG'][neg_index]
+    neg_index = df.loc[df[delay_calculated ] < pd.Timedelta(0)].index
+    neg_values = df[delay_calculated ][neg_index]
     #shift time one day in future (not negative) convert to minutes in float and then substract minutes of one day
     neg_values = (((neg_values + pd.Timedelta(1, 'D')).dt.seconds / 60) - 1440)
 
 
     #get index and values of delays pos time difference convert to minutes
-    pos_index = df.loc[df['VERSPAETUNG'] >= pd.Timedelta(0)].index
-    pos_values = df['VERSPAETUNG'][pos_index]
+    pos_index = df.loc[df[delay_calculated ] >= pd.Timedelta(0)].index
+    pos_values = df[delay_calculated ][pos_index]
     pos_values = ((pos_values.dt.seconds) / 60)
 
     #write into delay column
-    df['VERSPAETUNG'][pos_index] = pos_values
-    df['VERSPAETUNG'][neg_index] = neg_values
-    df['VERSPAETUNG'] = df['VERSPAETUNG'].astype(int)
-    
-    return df
-
-
-def extract_cancels(df):
-    '''function to extract neccesary information for cancelled'''
-    #For cancelled trains we do not need the times prognosis, also we drop duplicate lines
-    df = df.loc[:, ['FAHRT_BEZEICHNER','BETRIEBSTAG', 'BETREIBER_ABK', 'BETREIBER_NAME', 'LINIEN_ID', 'LINIEN_TEXT', 'FAELLT_AUS_TF', 'HALTESTELLEN_NAME']]
-    df.drop_duplicates(subset=['FAHRT_BEZEICHNER', 'LINIEN_ID', 'LINIEN_TEXT', 'BETREIBER_ABK', 'FAELLT_AUS_TF'], inplace=True)
-    #keep only Linien ID and not Fahrt Bezeichner for memory reasons
-    df.drop(columns=['FAHRT_BEZEICHNER'], inplace = True)
+    df[delay_calculated ][pos_index] = pos_values
+    df[delay_calculated ][neg_index] = neg_values
+    df[delay_calculated ] = df[delay_calculated ].astype(int)
     
     return df
 
@@ -85,51 +83,75 @@ with open(google_ids_file) as file:
     reader = csv.reader(file)
     google_files_list = list(reader)
 
-#create empty dataframes
-df_delays = pd.DataFrame()
-df_cancelled = pd.DataFrame()
+#delete old result zip
+try:
+    os.remove(trains_zip)
+except:
+    pass
 
 #loop through id list and try to download files
 for google_file in google_files_list:
-    #while loop for multiple download tries
-    i = 0
-    while i < 10:
-        print(f"Download try {i+1} of 10" )
-        #load data from google drive to tmp.zip
-        download_link = f"https://drive.google.com/uc?id={google_file[0]}&export=download"
-        print(download_link)
-        google_loader = googleDriveFileDownloader()
-        google_loader.downloadFile(download_link, zip_filename)
     
-        #read all csv files inside zip and extract the info wanted for train delays
+    #loop for multiple download tries
+    i = 0
+    while i < 5:
         try:
-            with ZipFile(zip_filename, 'r') as zipObj:
+            #load data from google drive to tmp.zip
+            download_link = f"https://drive.google.com/uc?id={google_file[0]}&export=download"
+            print(f"Download try {i+1} of 5 for Link: {download_link}")
+            google_loader = googleDriveFileDownloader()
+            
+            #Download and verify download
+            google_loader.downloadFile(download_link, zip_filename)
+            zipfile.is_zipfile(zip_filename)
+            
+            #create empty dataframe
+            df_trains = pd.DataFrame()
+            
+            #read all csv files inside zip and extract the info wanted for train delays
+            with zipfile.ZipFile(zip_filename, 'r') as zipObj:
                 csv_files = zipObj.namelist()
+                #extract month name from csv_files list
+                csv_export_name = csv_files[0][:csv_files[0].find('/')]+'.csv'
                 for csv_file in csv_files:
                     print(csv_file)
                     #read csv into bytes format
                     tmp_data = zipObj.read(csv_file)
-        
+    
                     #convert to dataframe
                     df_tmp = pd.read_csv(BytesIO(tmp_data), sep=';', parse_dates=False)
         
-                    #only trains, no drive throughs, no station names and no departure times
-                    df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False),
-                            ['FAHRT_BEZEICHNER', 'BETRIEBSTAG', 'BETREIBER_ABK', 'BETREIBER_NAME', 'LINIEN_ID', 'LINIEN_TEXT', 'FAELLT_AUS_TF', 'ANKUNFTSZEIT', 'AN_PROGNOSE', 'AN_PROGNOSE_STATUS', 'HALTESTELLEN_NAME']]
-        
-                    #extract data for delays and append to dataframe
-                    df_delays = df_delays.append(extract_delays(df_tmp))
-        
-                    #extract data for cancelled trains and append to dataframe
-                    df_cancelled = df_cancelled.append(extract_cancels(df_tmp))
-            #end loop
+                    #only trains, no drive throughs
+                    df_tmp = df_tmp.loc[(df_tmp['PRODUKT_ID'] == 'Zug') & (df_tmp['DURCHFAHRT_TF'] == False)]
+                    df_tmp.drop(columns=['DURCHFAHRT_TF', 'PRODUKT_ID', 'UMLAUF_ID', 'ZUSATZFAHRT_TF', 'VERKEHRSMITTEL_TEXT', 'BETREIBER_ID', 'BETREIBER_ABK', 'LINIEN_ID'], inplace=True) 
+            
+                    #calculate delays first drop not available delay values
+                    df_tmp.dropna(subset=['AN_PROGNOSE', 'AB_PROGNOSE'], inplace=True)
+                    df_tmp = calculate_delays(df_tmp, True)
+                    df_tmp = calculate_delays(df_tmp, False)
+
+                    #add tmp data to dataframe
+                    df_trains = df_trains.append(df_tmp)
+                #export to csv and add to zip file
+                df_trains.to_csv(csv_export_name, index=False)
+                with zipfile.ZipFile(trains_zip, 'a') as zipExport:
+                    zipExport.write(csv_export_name)
+                #remove csv file
+                try:
+                    os.remove(csv_export_name)
+                except:
+                    pass
+                
+                #clear variables
+                tmp_data = None
+                df_tmp = None
+                df_trains = None
             break
         except:
-                    i += 1
-                
-#delete tmp file
-os.remove(zip_filename)
+            i += 1
 
-#save DataFrame to csv for further usage
-df_delays.to_csv(delays_zip, index=False, compression={'method' : 'zip', 'archive_name' : delays_csv})
-df_cancelled.to_csv(cancelled_zip, index=False, compression={'method' : 'zip', 'archive_name' : cancelled_csv})
+#delete tmp file
+try:
+    os.remove(zip_filename)
+except:
+    pass
