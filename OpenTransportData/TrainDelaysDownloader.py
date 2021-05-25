@@ -21,21 +21,20 @@ from googleDriveFileDownloader import googleDriveFileDownloader
 import pandas as pd
 import zipfile
 from io import BytesIO
-
+from sqlalchemy import create_engine
 
 #check if debug mode then use testlist.csv
 gettrace = getattr(sys, 'gettrace', None)
 if gettrace():
-    google_ids_file = './testlist.csv'
+    google_ids_file = './testlist.txt'
 else:
     google_ids_file = sys.argv[1] #csv file with google drive ids
 
 
 zip_filename = './tmp.zip' #tmp file for downloaded data
-trains_zip = './trains.zip' #zip-file for train data export
-trains_csv = 'trains.csv' #csv-file for train data export
+db_name = './trains.db' #sql-file for data export
 
-#helper functions calculation of delays
+#helper functions
 def calculate_delays(df, arrival_delays):
     '''function to calculate trains delays from departure and arrival times'''
 
@@ -77,17 +76,21 @@ def calculate_delays(df, arrival_delays):
     
     return df
 
+def write_to_sql(df, table, db):
+    '''appends df to sqlite3 database'''
+    #create sqlalchemy engine and connection
+    try:
+        sql_engine = create_engine(f'sqlite:///{db}', echo=True)
+        with sql_engine.connect():
+            df.to_sql(table, sql_engine, if_exists='append', index=False)
+    except Exception() as e:
+        print(e)
+
 
 #load list of files in google_drive
 with open(google_ids_file) as file:
     reader = csv.reader(file)
     google_files_list = list(reader)
-
-#delete old result zip
-try:
-    os.remove(trains_zip)
-except:
-    pass
 
 #loop through id list and try to download files
 for google_file in google_files_list:
@@ -104,10 +107,7 @@ for google_file in google_files_list:
             #Download and verify download
             google_loader.downloadFile(download_link, zip_filename)
             zipfile.is_zipfile(zip_filename)
-            
-            #create empty dataframe
-            df_trains = pd.DataFrame()
-            
+                       
             #read all csv files inside zip and extract the info wanted for train delays
             with zipfile.ZipFile(zip_filename, 'r') as zipObj:
                 csv_files = zipObj.namelist()
@@ -130,28 +130,22 @@ for google_file in google_files_list:
                     df_tmp = calculate_delays(df_tmp, True)
                     df_tmp = calculate_delays(df_tmp, False)
 
+                    #table name is month
+                    table_name = df_tmp['BETRIEBSTAG'].iloc[0][3:].replace('.','_')
+                    
                     #add tmp data to dataframe
-                    df_trains = df_trains.append(df_tmp)
-                #export to csv and add to zip file
-                df_trains.to_csv(csv_export_name, index=False)
-                with zipfile.ZipFile(trains_zip, 'a') as zipExport:
-                    zipExport.write(csv_export_name)
-                #remove csv file
-                try:
-                    os.remove(csv_export_name)
-                except:
-                    pass
+                    write_to_sql(df_tmp, table_name, db_name)
                 
                 #clear variables
                 tmp_data = None
                 df_tmp = None
-                df_trains = None
             break
-        except:
+        except Exception as e:
             i += 1
+            print(e)
 
 #delete tmp file
 try:
     os.remove(zip_filename)
-except:
-    pass
+except Exception as e:
+    print(e)
